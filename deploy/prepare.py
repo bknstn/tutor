@@ -14,6 +14,7 @@ WORKSPACE = Path('/home/hermes/workspace/tutor-workspace')
 
 def main():
     os.umask(0o077)
+    os.environ['HERMES_HOME'] = str(HOME)
     if HOME.is_symlink():
         raise ValueError('Migrate the old profile to a real standalone tutor home first')
     HOME.mkdir(parents=True, exist_ok=True)
@@ -61,6 +62,22 @@ def main():
     for source in (ROOT / 'deploy').glob('hermes-tutor*.*'):
         if source.suffix in ('.service', '.timer'):
             shutil.copy2(source, units / source.name)
+    override = units / 'hermes-tutor.service.d'
+    override.mkdir(exist_ok=True)
+    shutil.copy2(ROOT / 'deploy/hermes-tutor.service.d/tutor.conf', override / 'tutor.conf')
+    from hermes_cli.gateway import get_service_name
+    alias = units / (get_service_name() + '.service')
+    unit = units / 'hermes-tutor.service'
+    if alias.exists() or alias.is_symlink():
+        if alias.resolve() != unit.resolve():
+            raise ValueError('Native gateway alias already belongs to another service')
+    else:
+        alias.symlink_to(unit.name)
+    wrapper = Path('/home/hermes/.local/bin/hermes-tutor')
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    wrapper.write_text('#!/bin/sh\nexport HERMES_HOME=/home/hermes/.hermes-tutor\n'
+                       'exec /home/hermes/runtimes/hermes-tutor/venv/bin/python -m hermes_cli.main "$@"\n')
+    wrapper.chmod(0o700)
     print('Prepared isolated tutor home, workspace and services. No services started.')
     print('Telegram bot token present:', bool(dotenv_values(env).get('TELEGRAM_BOT_TOKEN')))
 
