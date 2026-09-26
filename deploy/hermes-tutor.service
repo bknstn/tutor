@@ -8,11 +8,19 @@ Type=simple
 WorkingDirectory=/home/hermes/workspace/tutor-workspace
 Environment=HERMES_HOME=/home/hermes/.hermes-tutor
 Environment=GATEWAY_MULTIPLEX_PROFILES=false
+Environment=HERMES_SUPERVISED_CHILD=1
+Environment=VIRTUAL_ENV=/home/hermes/runtimes/hermes-tutor/venv
+Environment=PATH=/home/hermes/runtimes/hermes-tutor/venv/bin:/usr/local/bin:/usr/bin:/bin:/home/hermes/.local/bin
 EnvironmentFile=/home/hermes/.hermes-tutor/.env
-ExecStartPre=/home/hermes/.hermes/hermes-agent/venv/bin/python /home/hermes/workspace/tutor/deploy/check_ready.py
-ExecStart=/home/hermes/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
+ExecStartPre=/home/hermes/runtimes/hermes-tutor/venv/bin/python /home/hermes/workspace/tutor/deploy/check_ready.py
+ExecStart=/home/hermes/runtimes/hermes-tutor/venv/bin/python -m hermes_cli.main gateway run
 Restart=on-failure
 RestartSec=15
+RestartForceExitStatus=75
+SuccessExitStatus=75
+RestartPreventExitStatus=78
+KillMode=mixed
+TimeoutStopSec=210
 UMask=0077
 
 [Install]

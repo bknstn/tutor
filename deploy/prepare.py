@@ -1,4 +1,4 @@
-"""Run on the VPS with the shared Hermes venv. Prepares but never starts services."""
+"""Run with the tutor runtime's venv. Prepares but never starts services."""
 import os
 import shutil
 from pathlib import Path
@@ -10,29 +10,20 @@ from hermes_cli.default_soul import DEFAULT_SOUL_MD, is_legacy_template_soul
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path('/home/hermes/.hermes-tutor')
 WORKSPACE = Path('/home/hermes/workspace/tutor-workspace')
-MAIN = Path('/home/hermes/.hermes')
 
 
 def main():
     os.umask(0o077)
-    # Native profile layout enables Hermes's lock-aware shared OAuth fallback.
-    profile = MAIN / 'profiles/tutor'
-    profile.parent.mkdir(parents=True, exist_ok=True)
-    if HOME.is_dir() and not HOME.is_symlink() and not profile.exists():
-        HOME.rename(profile)
-    profile.mkdir(parents=True, exist_ok=True)
-    if not HOME.exists():
-        HOME.symlink_to(profile, target_is_directory=True)
-    if HOME.resolve() != profile.resolve():
-        raise ValueError('Tutor home exists at an unexpected path; inspect before continuing')
+    if HOME.is_symlink():
+        raise ValueError('Migrate the old profile to a real standalone tutor home first')
     HOME.mkdir(parents=True, exist_ok=True)
     HOME.chmod(0o700)
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     for name in ('cron', 'logs', 'sessions', 'memories', 'skills', 'plugins'):
         (HOME / name).mkdir(exist_ok=True)
-    original = yaml.safe_load((MAIN / 'config.yaml').read_text())
     config = {
-        'model': original['model'],
+        'model': {'default': 'gpt-5.6-sol', 'provider': 'openai-codex',
+                  'base_url': 'https://chatgpt.com/backend-api/codex'},
         'toolsets': ['tutor'],
         'platform_toolsets': {'telegram': ['tutor'], 'cli': ['tutor']},
         'terminal': {'backend': 'local', 'cwd': str(WORKSPACE)},
@@ -49,18 +40,17 @@ def main():
     env = HOME / '.env'
     env.touch(mode=0o600, exist_ok=True)
     env.chmod(0o600)
-    values = dotenv_values(MAIN / '.env')
-    owner = values.get('TELEGRAM_ALLOWED_USERS', '')
+    existing = dotenv_values(env)
+    owner = existing.get('TUTOR_OWNER_ID') or os.environ.get('TUTOR_OWNER_ID', '')
     if not owner.isdigit():
         raise ValueError('Specify one numeric Telegram owner before installation')
-    existing = dotenv_values(env)
     for key, value in {'TUTOR_OWNER_ID': owner, 'TELEGRAM_ALLOWED_USERS': owner,
                        'TELEGRAM_HOME_CHANNEL': owner, 'GATEWAY_ALLOW_ALL_USERS': 'false'}.items():
         if key not in existing:
             set_key(str(env), key, value, quote_mode='never')
     if 'TELEGRAM_BOT_TOKEN' not in existing:
         set_key(str(env), 'TELEGRAM_BOT_TOKEN', '', quote_mode='never')
-    # Use Hermes's supported global OAuth fallback. Do not copy refresh tokens.
+    # Each standalone home owns its credentials. Never import Buddy's OAuth.
     plugin = HOME / 'plugins/hermes-tutor'
     if plugin.is_symlink() and plugin.resolve() != ROOT / 'hermes_tutor':
         plugin.unlink()
