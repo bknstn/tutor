@@ -24,21 +24,31 @@ Connect using `ssh hermes-vps` as the existing unprivileged `hermes` user.
 
 | Purpose | Path / service |
 | --- | --- |
-| Shared framework and Python | `/home/hermes/.hermes/hermes-agent` |
+| Tutor framework and Python | `/home/hermes/runtimes/hermes-tutor` |
+| Buddy framework and Python | `/home/hermes/runtimes/hermes-buddy` |
 | Tutor source on main | `/home/hermes/workspace/tutor` |
-| Tutor home alias | `/home/hermes/.hermes-tutor` |
-| Actual native profile | `/home/hermes/.hermes/profiles/tutor` |
+| Tutor home (real directory) | `/home/hermes/.hermes-tutor` |
+| Buddy home (real directory) | `/home/hermes/.hermes-buddy` |
 | Tutor workspace | `/home/hermes/workspace/tutor-workspace` |
 | Private bot configuration | `/home/hermes/.hermes-tutor/.env` (0600) |
 | Vocabulary DB | `/home/hermes/.hermes-tutor/plugin-data/hermes-tutor/data.db` |
 | Gateway | `hermes-tutor.service` |
 | Daily reviews | `hermes-tutor-review.timer` / `.service` |
 
-The tutor has its own token, data, sessions, persona, service and timer. It uses
-the existing model configuration and Hermes's supported global OAuth fallback;
-refresh tokens are not copied. Only the configured owner's private Telegram
-chat is allowed. This is process/data isolation under the same Linux user,
-not a security boundary against the main Hermes account.
+The tutor has its own code checkout, Python interpreter, venv, Node dependencies,
+OAuth session, bot token, data, persona, gateway and review timer. Its startup
+does not read Buddy's configuration or credentials. Both use the same upstream
+Hermes release initially, but may be updated and rolled back independently.
+Only the configured owner's private Telegram chat is allowed. This is operational
+isolation under the same Linux user, not a filesystem security boundary.
+
+Legacy `/home/hermes/.hermes` points only to `.hermes-buddy`, and Buddy's
+`hermes-agent` link points to its own runtime. They preserve existing Buddy
+integrations and the default `hermes` CLI; the tutor does not use either link.
+Buddy's service is `hermes-buddy.service`, with `hermes-gateway.service` as a
+compatibility alias. The tutor also has a native hashed gateway service alias
+so its scoped Hermes CLI can find the correct service. Use the explicit
+`hermes-buddy` and `hermes-tutor` CLI wrappers to avoid targeting the wrong agent.
 
 ## Deployment
 
@@ -50,7 +60,7 @@ cd /home/hermes/workspace/tutor
 git pull --ff-only origin main
 test "$(git branch --show-current)" = main
 test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-PY=/home/hermes/.hermes/hermes-agent/venv/bin/python
+PY=/home/hermes/runtimes/hermes-tutor/venv/bin/python
 $PY -m unittest discover -s tests -v
 $PY deploy/prepare.py
 $PY deploy/check_ready.py
@@ -61,11 +71,14 @@ systemctl --user enable --now hermes-tutor-review.timer
 
 `prepare.py` creates the profile, persona, allowlist, plugin symlink and units;
 it does not start services. It preserves existing config and custom persona.
-Set a separate TELEGRAM_BOT_TOKEN in the tutor .env before activation. Never
-reuse the main bot token. The readiness check only calls getMe/getWebhookInfo.
+For a new install, set TUTOR_OWNER_ID and TELEGRAM_BOT_TOKEN in the tutor .env
+before activation and authorize its own model credentials. Never reuse the
+Buddy bot token or copy its OAuth refresh token. The readiness check only calls
+getMe/getWebhookInfo and does not require Buddy's files.
 The user must press Start before Telegram allows daily messages.
-After source updates, restart only the tutor service. Preserve separate
-gateways during framework updates; avoid automatic profile multiplex migration.
+After source updates, restart only the tutor service. For framework updates,
+operate on the tutor runtime and tutor home explicitly. Preserve separate
+gateways and leave automatic profile multiplex migration disabled.
 
 ```sh
 systemctl --user status hermes-tutor.service --no-pager
@@ -81,7 +94,7 @@ stopped. Never commit databases, logs, sessions, backups or secrets.
 ## Validation and MVP limits
 
 Run `python3 -m unittest discover -s tests -v`. The core uses only Python's
-standard library; two Telegram tests require the shared Hermes venv and skip
+standard library; two Telegram tests require the tutor Hermes venv and skip
 otherwise. Tests cover concurrent duplicates, due selection, intervals,
 persistence, unauthorized/replayed/stale buttons and delivery retries.
 The plugin validator passes on Hermes v0.21.3, commit 345cd2b057.
