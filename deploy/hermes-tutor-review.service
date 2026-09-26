@@ -1,0 +1,12 @@
+[Unit]
+Description=Hermes Tutor daily vocabulary review
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hermes/workspace/tutor
+Environment=HERMES_HOME=/home/hermes/.hermes-tutor
+EnvironmentFile=/home/hermes/.hermes-tutor/.env
+ExecCondition=/usr/bin/systemctl --user --quiet is-active hermes-tutor.service
+ExecStart=/home/hermes/.hermes/hermes-agent/venv/bin/python -m hermes_tutor.review_job
+UMask=0077
