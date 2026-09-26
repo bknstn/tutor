@@ -74,7 +74,10 @@ it does not start services. It preserves existing config and custom persona.
 For a new install, set TUTOR_OWNER_ID and TELEGRAM_BOT_TOKEN in the tutor .env
 before activation and authorize its own model credentials. Never reuse the
 Buddy bot token or copy its OAuth refresh token. The readiness check only calls
-getMe/getWebhookInfo and does not require Buddy's files.
+getMe/getWebhookInfo and does not require Buddy's files. The installer also
+creates the scoped CLI wrapper and native systemd alias. Hermes may regenerate
+its base unit during startup; `hermes-tutor.service.d/tutor.conf` preserves
+the environment file, preflight and private file permissions across that repair.
 The user must press Start before Telegram allows daily messages.
 After source updates, restart only the tutor service. For framework updates,
 operate on the tutor runtime and tutor home explicitly. Preserve separate
