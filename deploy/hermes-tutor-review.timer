@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily English review at 19:00 Warsaw
+
+[Timer]
+OnCalendar=*-*-* 19:00:00 Europe/Warsaw
+Persistent=true
+Unit=hermes-tutor-review.service
+
+[Install]
+WantedBy=timers.target
