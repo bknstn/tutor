@@ -18,6 +18,13 @@ Repeated clicks count only once; superseded buttons cannot update a newer
 review. Unanswered cards remain due and may be offered the next day.
 The daily job stays silent when nothing is due.
 
+## Current model (verified 2026-09-27)
+
+The existing Tutor profile uses `gpt-6-luna` with `agent.reasoning_effort: xhigh`
+through its own `openai-codex` OAuth session (Codex subscription). No OpenAI API
+key is configured for Tutor. Model and reasoning settings live in its private
+VPS `config.yaml`; the installer preserves existing configuration.
+
 ## VPS layout
 
 Connect using `ssh hermes-vps` as the existing unprivileged `hermes` user.
