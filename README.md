@@ -1,15 +1,19 @@
 # Hermes Tutor MVP
 
 Self-hosted English vocabulary tutor for Telegram.
-Send a word or phrase, receive an English definition, Russian translation and
-one example, then review it. A native plugin for the existing upstream Hermes
-codebase, with no framework modifications.
+Send a word or phrase, receive its IPA pronunciation and common meanings, each
+with an English definition, Russian translation and example, then review it.
+Multi-meaning terms get at least two distinct meanings (up to three); terms with
+one meaning get one. IPA uses standard British pronunciation, with labeled
+variants where pronunciation differs by sense. A native plugin for the existing
+upstream Hermes codebase, with no framework modifications.
 
 ## Usage
 
 Open the bot and press **Start**. Send `convoluted`, `rule out`, or `take for
 granted`. Duplicate terms (case, whitespace and Unicode normalized) return
-`Already saved.` New cards become due after 24 hours.
+the saved card and `Already saved.` New cards become due after 24 hours.
+Legacy cards can be enriched on resubmission without resetting review history.
 
 At 19:00 Europe/Warsaw, up to five due cards arrive. Recall the meaning, press
 **Показать ответ**, then **Again**, **Good**, or **Easy**. Python schedules the

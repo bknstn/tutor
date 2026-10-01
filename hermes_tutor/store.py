@@ -1,4 +1,5 @@
 """Small, single-user vocabulary store. All dates are UTC epoch seconds."""
+import json
 import os
 import secrets
 import sqlite3
@@ -9,6 +10,29 @@ from pathlib import Path
 
 TYPES = ('word', 'phrase', 'phrasal_verb', 'idiom')
 INTERVALS = {'again': 1, 'good': 3, 'easy': 7}
+
+
+def card_data(row):
+    card = dict(row)
+    card['meanings'] = json.loads(card['meanings']) or [
+        {key: card[key] for key in ('definition', 'translation', 'example')}]
+    return card
+
+
+def validate_content(pronunciation, meanings):
+    if not isinstance(pronunciation, str) or not pronunciation.strip() or len(pronunciation) > 160:
+        raise ValueError('Provide an IPA pronunciation (1–160 characters)')
+    if not isinstance(meanings, list) or not 1 <= len(meanings) <= 3:
+        raise ValueError('Provide 1–3 meanings; at least two when the term has multiple meanings')
+    cleaned = []
+    for meaning in meanings:
+        if not isinstance(meaning, dict) or set(meaning) != {'definition', 'translation', 'example'}:
+            raise ValueError('Each meaning needs definition, translation, and example')
+        for value in meaning.values():
+            if not isinstance(value, str) or not value.strip() or len(value) > 300:
+                raise ValueError('Meaning fields must contain 1–300 characters')
+        cleaned.append({key: value.strip() for key, value in meaning.items()})
+    return pronunciation.strip(), cleaned
 
 
 def normalize(term):
@@ -39,6 +63,12 @@ class Store:
                     message_id INTEGER, revealed INTEGER NOT NULL DEFAULT 0,
                     answered_at INTEGER);
             ''')
+            # Migrate existing cards without changing IDs or review history.
+            db.execute('BEGIN IMMEDIATE')
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(cards)')}
+            for name, default in (('pronunciation', ''), ('meanings', '[]')):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE cards ADD COLUMN {name} TEXT NOT NULL DEFAULT '{default}'")
 
     @contextmanager
     def connect(self):
@@ -54,22 +84,33 @@ class Store:
     def lookup(self, term):
         with self.connect() as db:
             row = db.execute('SELECT * FROM cards WHERE term=?', (normalize(term),)).fetchone()
-            return dict(row) if row else None
+            return card_data(row) if row else None
 
-    def save(self, term, type, definition, translation, example, now=None):
+    def save(self, term, type, pronunciation, meanings, now=None):
         term = normalize(term)
         if type not in TYPES:
             raise ValueError('Invalid card type')
-        for value in (definition, translation, example):
-            if not isinstance(value, str) or not value.strip() or len(value) > 700:
-                raise ValueError('Card fields must contain 1–700 characters')
+        pronunciation, meanings = validate_content(pronunciation, meanings)
+        primary = meanings[0]
         now = int(time.time() if now is None else now)
         with self.connect() as db:
             result = db.execute('''INSERT INTO cards
-                (term,type,definition,translation,example,created_at,next_review_at)
-                VALUES (?,?,?,?,?,?,?) ON CONFLICT(term) DO NOTHING''',
-                (term, type, definition.strip(), translation.strip(), example.strip(), now, now + 86400))
+                (term,type,definition,translation,example,pronunciation,meanings,created_at,next_review_at)
+                VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(term) DO NOTHING''',
+                (term, type, primary['definition'], primary['translation'], primary['example'],
+                 pronunciation, json.dumps(meanings, ensure_ascii=False), now, now + 86400))
             return {'status': 'saved' if result.rowcount else 'already_saved', 'term': term}
+
+    def enrich(self, term, pronunciation, meanings):
+        term = normalize(term)
+        pronunciation, meanings = validate_content(pronunciation, meanings)
+        primary = meanings[0]
+        with self.connect() as db:
+            result = db.execute('''UPDATE cards SET pronunciation=?,meanings=?,
+                definition=?,translation=?,example=? WHERE term=? AND pronunciation='' ''',
+                (pronunciation, json.dumps(meanings, ensure_ascii=False), primary['definition'],
+                 primary['translation'], primary['example'], term))
+            return {'status': 'enriched' if result.rowcount else 'unchanged', 'term': term}
 
     def reserve(self, chat_id, limit=5, now=None):
         now = int(time.time() if now is None else now)
@@ -84,7 +125,7 @@ class Store:
                 token = secrets.token_hex(8)
                 db.execute('INSERT INTO reviews(token,card_id,chat_id,created_at) VALUES (?,?,?,?)',
                            (token, row['id'], str(chat_id), now))
-                result.append({**dict(row), 'token': token})
+                result.append({**card_data(row), 'token': token})
             return result
 
     def delivered(self, token, message_id):
@@ -101,7 +142,7 @@ class Store:
         now = int(time.time() if now is None else now)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            row = db.execute('''SELECT r.*, c.term,c.definition,c.translation,c.example
+            row = db.execute('''SELECT r.*, c.term,c.definition,c.translation,c.example,c.pronunciation,c.meanings
                 FROM reviews r JOIN cards c ON c.id=r.card_id
                 WHERE token=? AND chat_id=? AND message_id=? AND answered_at IS NULL
                 AND r.created_at>? AND NOT EXISTS (SELECT 1 FROM reviews newer
@@ -117,4 +158,4 @@ class Store:
                 db.execute('UPDATE reviews SET answered_at=? WHERE token=?', (now, token))
                 db.execute('UPDATE cards SET review_count=review_count+1,next_review_at=? WHERE id=?',
                            (now + INTERVALS[action] * 86400, row['card_id']))
-            return dict(row)
+            return card_data(row)

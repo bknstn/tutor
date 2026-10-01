@@ -1,3 +1,5 @@
+import json
+import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -13,8 +15,65 @@ class VocabularyTests(unittest.TestCase):
         self.store = Store(Path(self.tmp.name) / 'cards.db')
 
     def save(self, term='rule out'):
-        return self.store.save(term, 'phrasal_verb', 'exclude a possibility',
-                               'исключать', 'We cannot rule out rain.', now=1000)
+        return self.store.save(term, 'phrasal_verb', '/ruːl aʊt/', [
+            {'definition': 'exclude a possibility', 'translation': 'исключать',
+             'example': 'We cannot rule out rain.'}], now=1000)
+
+    def test_pronunciation_and_multiple_meanings_persist_and_reveal(self):
+        meanings = [
+            {'definition': 'behave towards someone', 'translation': 'обращаться с кем-либо',
+             'example': 'They treat her kindly.'},
+            {'definition': 'give medical care', 'translation': 'лечить',
+             'example': 'This medicine treats infections.'}]
+        self.store.save('treat', 'word', '/triːt/', meanings, now=1000)
+        reloaded = Store(self.store.path)
+        self.assertEqual(reloaded.lookup('treat')['meanings'], meanings)
+        card = reloaded.reserve('42', now=90000)[0]
+        self.assertEqual(card['pronunciation'], '/triːt/')
+        self.assertEqual(card['meanings'], meanings)
+        reloaded.delivered(card['token'], 7)
+        revealed = reloaded.answer(card['token'], '42', 7, 'show', now=90001)
+        self.assertEqual(revealed['meanings'], meanings)
+        self.assertEqual(revealed['pronunciation'], '/triːt/')
+
+    def test_invalid_content_is_not_saved(self):
+        valid = [{'definition': 'medical care', 'translation': 'лечение', 'example': 'It works.'}]
+        for pronunciation, meanings in [('', valid), (None, valid), ('x' * 161, valid),
+                                       ('/x/', []), ('/x/', valid * 4), ('/x/', [None]),
+                                       ('/x/', [{'definition': 'missing fields'}]),
+                                       ('/x/', [{**valid[0], 'example': ' '}]),
+                                       ('/x/', [{**valid[0], 'translation': 'x' * 301}])]:
+            with self.subTest(pronunciation=pronunciation, meanings=meanings):
+                with self.assertRaises(ValueError):
+                    self.store.save('invalid', 'word', pronunciation, meanings)
+                self.assertIsNone(self.store.lookup('invalid'))
+
+    def test_legacy_migration_and_enrichment_preserve_reviews(self):
+        legacy_path = Path(self.tmp.name) / 'legacy.db'
+        with sqlite3.connect(legacy_path) as db:
+            db.execute('''CREATE TABLE cards (id INTEGER PRIMARY KEY, term TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL, definition TEXT NOT NULL, translation TEXT NOT NULL,
+                example TEXT NOT NULL, created_at INTEGER NOT NULL, next_review_at INTEGER NOT NULL,
+                review_count INTEGER NOT NULL DEFAULT 0)''')
+            db.execute("INSERT INTO cards VALUES (7,'treat','word','care','лечить','They treat it.',1,2,9)")
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            stores = list(pool.map(lambda _: Store(legacy_path), range(4)))
+        store = stores[0]
+        before = store.lookup('treat')
+        self.assertEqual(before['pronunciation'], '')
+        self.assertEqual(before['meanings'][0]['translation'], 'лечить')
+        card = store.reserve('42', now=3)[0]
+        store.delivered(card['token'], 10)
+        content = [{key: before[key] for key in ('definition', 'translation', 'example')}]
+        self.assertEqual(store.enrich('TREAT', '/triːt/', content)['status'], 'enriched')
+        after = Store(legacy_path).lookup('treat')
+        for key in ('id', 'created_at', 'next_review_at', 'review_count'):
+            self.assertEqual(after[key], before[key])
+        self.assertEqual(store.enrich('treat', '/other/', content)['status'], 'unchanged')
+        self.assertEqual(store.enrich('absent', '/x/', content)['status'], 'unchanged')
+        revealed = store.answer(card['token'], '42', 10, 'show', now=4)
+        self.assertEqual(revealed['pronunciation'], '/triːt/')
+        self.assertEqual(revealed['meanings'], content)
 
     def test_normalized_concurrent_duplicates(self):
         with ThreadPoolExecutor(max_workers=4) as pool:

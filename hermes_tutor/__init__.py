@@ -17,6 +17,8 @@ def tool(args, **kwargs):
             result = {'card': store.lookup(data['term'])}
         elif action == 'save':
             result = store.save(**data)
+        elif action == 'enrich':
+            result = store.enrich(**data)
         else:
             raise ValueError('Unknown action')
         return json.dumps(result, ensure_ascii=False)
@@ -38,6 +40,18 @@ def keyboard(token, revealed=False):
     actions = [('Again', 'again'), ('Good', 'good'), ('Easy', 'easy')] if revealed else [('Показать ответ', 'show')]
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f'tutor:{token}:{action}')
                                   for label, action in actions]])
+
+
+def format_card(card):
+    header = card['term']
+    if card['pronunciation']:
+        header += f'\nIPA: {card["pronunciation"]}'
+    blocks = []
+    for index, meaning in enumerate(card['meanings'], 1):
+        label = f'{index}. Meaning' if len(card['meanings']) > 1 else 'Meaning'
+        blocks.append(f'{label}: {meaning["definition"]}\nRU: {meaning["translation"]}'
+                      f'\nExample: {meaning["example"]}')
+    return header + '\n\n' + '\n\n'.join(blocks)
 
 
 async def send_reviews(bot, chat_id, store=None):
@@ -91,7 +105,7 @@ def wire(application, adapter):
         await query.answer()
         if action == 'show':
             await query.edit_message_text(
-                f'{card["term"]}\n\nMeaning: {card["definition"]}\nRU: {card["translation"]}\n\nExample: {card["example"]}',
+                format_card(card),
                 reply_markup=keyboard(token, True))
         else:
             await query.edit_message_text(f'{card["term"]} — {action.title()}\nСледующее повторение через {INTERVALS[action]} дн.')
@@ -102,12 +116,22 @@ def wire(application, adapter):
 
 
 def register(ctx):
-    properties = {key: {'type': 'string'} for key in ('term', 'definition', 'translation', 'example')}
-    properties.update(action={'type': 'string', 'enum': ['lookup', 'save']},
+    meaning_fields = {key: {'type': 'string', 'minLength': 1, 'maxLength': 300}
+                      for key in ('definition', 'translation', 'example')}
+    properties = {
+        'term': {'type': 'string'},
+        'pronunciation': {'type': 'string', 'minLength': 1, 'maxLength': 160,
+                          'description': 'IPA in /slashes/; use standard British pronunciation. Include sense labels for words whose pronunciation depends on meaning.'},
+        'meanings': {'type': 'array', 'minItems': 1, 'maxItems': 3,
+                     'description': 'At least two distinct common meanings if the term has multiple meanings; one only for a single-meaning term. Each has its own Russian translation and example.',
+                     'items': {'type': 'object', 'properties': meaning_fields,
+                               'required': list(meaning_fields), 'additionalProperties': False}},
+    }
+    properties.update(action={'type': 'string', 'enum': ['lookup', 'save', 'enrich']},
                       type={'type': 'string', 'enum': list(TYPES)})
     ctx.register_tool(name='tutor_vocabulary', toolset='tutor',
         schema={'name': 'tutor_vocabulary',
-                'description': 'Look up a vocabulary term before generating a card. Save with term, type, short English definition, Russian translation, and one English example. Only report Saved after status=saved. Scheduling is handled by Telegram buttons, never by this tool.',
+                'description': 'Look up a term before generating a card. Save with term, type, pronunciation (IPA), and meanings (1–3 objects with short English definition, Russian translation, and one English example each). Include at least two common meanings when they exist; do not invent extra senses. For a legacy card with empty pronunciation, use enrich with term, pronunciation, and meanings to add content while preserving reviews. Only report Saved after status=saved, or Updated after status=enriched. Scheduling is handled by Telegram buttons, never by this tool.',
                 'parameters': {'type': 'object', 'properties': properties, 'required': ['action', 'term']}},
         handler=tool)
     ctx.register_platform_handler('telegram', wire)
