@@ -123,7 +123,7 @@ def register(ctx):
         'pronunciation': {'type': 'string', 'minLength': 1, 'maxLength': 160,
                           'description': 'IPA in /slashes/; use standard British pronunciation. Include sense labels for words whose pronunciation depends on meaning.'},
         'meanings': {'type': 'array', 'minItems': 1, 'maxItems': 3,
-                     'description': 'At least two distinct common meanings if the term has multiple meanings; one only for a single-meaning term. Each has its own Russian translation and example.',
+                     'description': 'Start with one common meaning. Add another only for a genuinely different sense or established domain-specific use. Compare candidates before saving and merge paraphrases, synonyms, broader/narrower descriptions, and process/result variants of the same sense. Different examples or settings alone are not new senses. Reimbursement (money vs repayment process) and curriculum (course content vs subjects offered) each need one meaning; treat (behave towards, give medical care, give something enjoyable) has distinct senses. Keep one when uncertain; never fill a quota. Each meaning has a concise Russian translation and one English example.',
                      'items': {'type': 'object', 'properties': meaning_fields,
                                'required': list(meaning_fields), 'additionalProperties': False}},
     }
@@ -131,7 +131,7 @@ def register(ctx):
                       type={'type': 'string', 'enum': list(TYPES)})
     ctx.register_tool(name='tutor_vocabulary', toolset='tutor',
         schema={'name': 'tutor_vocabulary',
-                'description': 'Look up a term before generating a card. Save with term, type, pronunciation (IPA), and meanings (1–3 objects with short English definition, Russian translation, and one English example each). Include at least two common meanings when they exist; do not invent extra senses. For a legacy card with empty pronunciation, use enrich with term, pronunciation, and meanings to add content while preserving reviews. Only report Saved after status=saved, or Updated after status=enriched. Scheduling is handled by Telegram buttons, never by this tool.',
+                'description': 'Look up a term before generating a card. Save with term, type, pronunciation (IPA), and meanings (1–3 objects with short English definition, Russian translation, and one English example each). Merge semantic duplicates BEFORE calling save/enrich; add a meaning only for a new sense or established domain-specific use, never just another wording or synonym. Prefer one meaning when uncertain. For a legacy card with empty pronunciation, use enrich with term, pronunciation, and meanings to add content while preserving reviews. Display only the returned card and its stored meanings. Only report Saved after status=saved, or Updated after status=enriched. Scheduling is handled by Telegram buttons, never by this tool.',
                 'parameters': {'type': 'object', 'properties': properties, 'required': ['action', 'term']}},
         handler=tool)
     ctx.register_platform_handler('telegram', wire)

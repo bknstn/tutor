@@ -23,15 +23,25 @@ def validate_content(pronunciation, meanings):
     if not isinstance(pronunciation, str) or not pronunciation.strip() or len(pronunciation) > 160:
         raise ValueError('Provide an IPA pronunciation (1–160 characters)')
     if not isinstance(meanings, list) or not 1 <= len(meanings) <= 3:
-        raise ValueError('Provide 1–3 meanings; at least two when the term has multiple meanings')
+        raise ValueError('Provide 1–3 meanings; each extra meaning must add a new sense or domain-specific use')
     cleaned = []
+    definitions = set()
     for meaning in meanings:
         if not isinstance(meaning, dict) or set(meaning) != {'definition', 'translation', 'example'}:
             raise ValueError('Each meaning needs definition, translation, and example')
         for value in meaning.values():
             if not isinstance(value, str) or not value.strip() or len(value) > 300:
                 raise ValueError('Meaning fields must contain 1–300 characters')
-        cleaned.append({key: value.strip() for key, value in meaning.items()})
+        content = {key: value.strip() for key, value in meaning.items()}
+        # Catch repeated definitions deterministically. Semantic paraphrases must
+        # be merged by the tutor before saving; text similarity cannot establish
+        # whether two senses or domain-specific uses are actually distinct.
+        definition = ' '.join(''.join(
+            char if char.isalnum() else ' '
+            for char in unicodedata.normalize('NFKC', content['definition']).casefold()).split())
+        if definition not in definitions:
+            definitions.add(definition)
+            cleaned.append(content)
     return pronunciation.strip(), cleaned
 
 
@@ -99,7 +109,9 @@ class Store:
                 VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(term) DO NOTHING''',
                 (term, type, primary['definition'], primary['translation'], primary['example'],
                  pronunciation, json.dumps(meanings, ensure_ascii=False), now, now + 86400))
-            return {'status': 'saved' if result.rowcount else 'already_saved', 'term': term}
+            row = db.execute('SELECT * FROM cards WHERE term=?', (term,)).fetchone()
+            return {'status': 'saved' if result.rowcount else 'already_saved',
+                    'term': term, 'card': card_data(row)}
 
     def enrich(self, term, pronunciation, meanings):
         term = normalize(term)
@@ -110,7 +122,9 @@ class Store:
                 definition=?,translation=?,example=? WHERE term=? AND pronunciation='' ''',
                 (pronunciation, json.dumps(meanings, ensure_ascii=False), primary['definition'],
                  primary['translation'], primary['example'], term))
-            return {'status': 'enriched' if result.rowcount else 'unchanged', 'term': term}
+            row = db.execute('SELECT * FROM cards WHERE term=?', (term,)).fetchone()
+            return {'status': 'enriched' if result.rowcount else 'unchanged',
+                    'term': term, 'card': card_data(row) if row else None}
 
     def reserve(self, chat_id, limit=5, now=None):
         now = int(time.time() if now is None else now)

@@ -36,6 +36,36 @@ class VocabularyTests(unittest.TestCase):
         self.assertEqual(revealed['meanings'], meanings)
         self.assertEqual(revealed['pronunciation'], '/triːt/')
 
+    def test_repeated_definition_keeps_one_stored_and_returned_meaning(self):
+        primary = {'definition': 'Money paid back for expenses.',
+                   'translation': 'возмещение расходов',
+                   'example': 'You can claim reimbursement for travel.'}
+        duplicate = {'definition': '  ＭＯＮＥＹ paid  back for expenses! ',
+                     'translation': 'компенсация затрат',
+                     'example': 'Reimbursement usually takes a week.'}
+        result = self.store.save('reimbursement', 'word', '/ˌriːɪmˈbɜːsmənt/',
+                                 [primary, duplicate], now=1000)
+        self.assertEqual(result['status'], 'saved')
+        self.assertEqual(result['card']['meanings'], [primary])
+        self.assertEqual(Store(self.store.path).lookup('reimbursement')['meanings'], [primary])
+        card = self.store.reserve('42', now=90000)[0]
+        self.store.delivered(card['token'], 7)
+        self.assertEqual(self.store.answer(card['token'], '42', 7, 'show', now=90001)['meanings'],
+                         [primary])
+        retry = self.store.save('reimbursement', 'word', '/other/', [duplicate])
+        self.assertEqual(retry['status'], 'already_saved')
+        self.assertEqual(retry['card']['meanings'], [primary])
+
+    def test_distinct_domain_uses_with_same_translation_are_preserved(self):
+        meanings = [
+            {'definition': 'To operate a machine or vehicle.', 'translation': 'управлять',
+             'example': 'She controls the crane from the cabin.'},
+            {'definition': 'To direct an organisation or its activities.', 'translation': 'управлять',
+             'example': 'The family controls the company.'}]
+        result = self.store.save('control', 'word', '/kənˈtrəʊl/', meanings)
+        self.assertEqual(result['card']['meanings'], meanings)
+        self.assertEqual(self.store.lookup('control')['meanings'], meanings)
+
     def test_invalid_content_is_not_saved(self):
         valid = [{'definition': 'medical care', 'translation': 'лечение', 'example': 'It works.'}]
         for pronunciation, meanings in [('', valid), (None, valid), ('x' * 161, valid),
@@ -65,12 +95,19 @@ class VocabularyTests(unittest.TestCase):
         card = store.reserve('42', now=3)[0]
         store.delivered(card['token'], 10)
         content = [{key: before[key] for key in ('definition', 'translation', 'example')}]
-        self.assertEqual(store.enrich('TREAT', '/triːt/', content)['status'], 'enriched')
+        duplicate = {**content[0], 'example': 'The doctor treated her.'}
+        result = store.enrich('TREAT', '/triːt/', content + [duplicate])
+        self.assertEqual(result['status'], 'enriched')
+        self.assertEqual(result['card']['meanings'], content)
         after = Store(legacy_path).lookup('treat')
         for key in ('id', 'created_at', 'next_review_at', 'review_count'):
             self.assertEqual(after[key], before[key])
-        self.assertEqual(store.enrich('treat', '/other/', content)['status'], 'unchanged')
-        self.assertEqual(store.enrich('absent', '/x/', content)['status'], 'unchanged')
+        unchanged = store.enrich('treat', '/other/', content)
+        self.assertEqual(unchanged['status'], 'unchanged')
+        self.assertEqual(unchanged['card'], after)
+        absent = store.enrich('absent', '/x/', content)
+        self.assertEqual(absent['status'], 'unchanged')
+        self.assertIsNone(absent['card'])
         revealed = store.answer(card['token'], '42', 10, 'show', now=4)
         self.assertEqual(revealed['pronunciation'], '/triːt/')
         self.assertEqual(revealed['meanings'], content)

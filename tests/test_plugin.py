@@ -103,6 +103,23 @@ class CardTests(unittest.TestCase):
             self.assertIn('error', json.loads(tool({**args, 'term': 'invalid', 'pronunciation': ''})))
             self.assertIsNone(json.loads(tool({'action': 'lookup', 'term': 'invalid'}))['card'])
 
+    def test_tool_returns_filtered_card_for_display(self):
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, HERMES_HOME=home):
+            primary = {'definition': 'Money paid back for expenses.',
+                       'translation': 'возмещение расходов',
+                       'example': 'I claimed reimbursement for travel.'}
+            duplicate = {**primary, 'definition': 'money paid back for expenses',
+                         'translation': 'компенсация затрат',
+                         'example': 'Reimbursement takes a week.'}
+            result = json.loads(tool({'action': 'save', 'term': 'reimbursement', 'type': 'word',
+                                      'pronunciation': '/ˌriːɪmˈbɜːsmənt/',
+                                      'meanings': [primary, duplicate]}))
+            self.assertEqual(result['status'], 'saved')
+            rendered = format_card(result['card'])
+            self.assertIn('RU: возмещение расходов', rendered)
+            self.assertNotIn('компенсация затрат', rendered)
+            self.assertNotIn('2. Meaning', rendered)
+
     def test_schema_exposes_pronunciation_and_structured_meanings(self):
         ctx = SimpleNamespace(register_tool=lambda **kwargs: tools.append(kwargs),
                               register_platform_handler=lambda *args: None)

@@ -3,8 +3,15 @@
 Self-hosted English vocabulary tutor for Telegram.
 Send a word or phrase, receive its IPA pronunciation and common meanings, each
 with an English definition, Russian translation and example, then review it.
-Multi-meaning terms get at least two distinct meanings (up to three); terms with
-one meaning get one. IPA uses standard British pronunciation, with labeled
+Cards start with one common meaning; a second or third is added only for a
+different sense or an established domain-specific use. Paraphrases, synonyms,
+broader/narrower descriptions, and process/result variants are merged before
+saving. Different examples alone do not create another sense. Reimbursement
+and curriculum each get one meaning; treat keeps its distinct senses.
+Storage also collapses repeated English definitions regardless of case,
+spacing, Unicode variants, or punctuation, and returns the stored card for
+display. Semantic distinctions are checked by the tutor model, not by text
+similarity. IPA uses standard British pronunciation, with labeled
 variants where pronunciation differs by sense. A native plugin for the existing
 upstream Hermes codebase, with no framework modifications.
 
@@ -22,9 +29,9 @@ Repeated clicks count only once; superseded buttons cannot update a newer
 review. Unanswered cards remain due and may be offered the next day.
 The daily job stays silent when nothing is due.
 
-## Current model (verified 2026-09-27)
+## Current model (verified 2026-10-03)
 
-The existing Tutor profile uses `gpt-6-luna` with `agent.reasoning_effort: xhigh`
+The existing Tutor profile uses `gpt-6-sol` with `agent.reasoning_effort: medium`
 through its own `openai-codex` OAuth session (Codex subscription). No OpenAI API
 key is configured for Tutor. Model and reasoning settings live in its private
 VPS `config.yaml`; the installer preserves existing configuration.
