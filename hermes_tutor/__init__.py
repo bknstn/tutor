@@ -4,6 +4,7 @@ import logging
 import os
 
 from .store import INTERVALS, Store, TYPES
+from .sessions import daily_session
 
 log = logging.getLogger(__name__)
 
@@ -135,3 +136,4 @@ def register(ctx):
                 'parameters': {'type': 'object', 'properties': properties, 'required': ['action', 'term']}},
         handler=tool)
     ctx.register_platform_handler('telegram', wire)
+    ctx.register_hook('pre_gateway_dispatch', daily_session)

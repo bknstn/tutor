@@ -122,13 +122,16 @@ class CardTests(unittest.TestCase):
 
     def test_schema_exposes_pronunciation_and_structured_meanings(self):
         ctx = SimpleNamespace(register_tool=lambda **kwargs: tools.append(kwargs),
-                              register_platform_handler=lambda *args: None)
+                              register_platform_handler=lambda *args: None,
+                              register_hook=lambda *args: hooks.append(args))
         tools = []
+        hooks = []
         register(ctx)
         properties = tools[0]['schema']['parameters']['properties']
         self.assertIn('pronunciation', properties)
         self.assertEqual(properties['meanings']['items']['required'],
                          ['definition', 'translation', 'example'])
+        self.assertEqual(hooks[0][0], 'pre_gateway_dispatch')
 
 
 if __name__ == '__main__':

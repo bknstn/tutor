@@ -1,5 +1,7 @@
 name: hermes-tutor
-version: 0.2.1
+version: 0.3.0
 description: Personal English vocabulary capture and deterministic Telegram reviews.
 provides_tools:
   - tutor_vocabulary
+provides_hooks:
+  - pre_gateway_dispatch

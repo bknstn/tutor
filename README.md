@@ -29,6 +29,15 @@ Repeated clicks count only once; superseded buttons cannot update a newer
 review. Unanswered cards remain due and may be offered the next day.
 The daily job stays silent when nothing is due.
 
+The first ordinary message on a new calendar day in **Europe/Warsaw** starts a
+fresh conversation session. Context is kept throughout the same day; no nightly
+service restart or extra reset notification is needed. An active turn is allowed
+to finish, and the next idle user message performs the reset. Commands and review
+buttons do not trigger it. Vocabulary cards, review buttons and scheduling live
+outside conversation history and survive the reset. `/new` and `/reset` still
+start a fresh session manually; Hermes auto-compression remains enabled for long
+conversations within a day.
+
 ## Current model (verified 2026-10-03)
 
 The existing Tutor profile uses `gpt-6-sol` with `agent.reasoning_effort: medium`
@@ -115,9 +124,10 @@ stopped. Never commit databases, logs, sessions, backups or secrets.
 ## Validation and MVP limits
 
 Run `python3 -m unittest discover -s tests -v`. The core uses only Python's
-standard library; two Telegram tests require the tutor Hermes venv and skip
-otherwise. Tests cover concurrent duplicates, due selection, intervals,
-persistence, unauthorized/replayed/stale buttons and delivery retries.
+standard library; Telegram and native session integration tests require the
+tutor Hermes venv and skip otherwise. Tests cover concurrent duplicates, due
+selection, intervals, persistence, unauthorized/replayed/stale buttons, delivery
+retries, Warsaw day boundaries and conversation-cache clearing.
 The plugin validator passes on Hermes v0.21.3, commit 345cd2b057.
 
 Delivery is not exactly-once: ambiguous network timeouts may leave an orphan
