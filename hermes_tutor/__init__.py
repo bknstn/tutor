@@ -5,6 +5,7 @@ import os
 
 from .store import INTERVALS, Store, TYPES
 from .sessions import daily_session
+from .reviews import edit_review, send_reviews
 
 log = logging.getLogger(__name__)
 
@@ -55,43 +56,44 @@ def format_card(card):
     return header + '\n\n' + '\n\n'.join(blocks)
 
 
-async def send_reviews(bot, chat_id, store=None):
-    store = store or Store()
-    cards = store.reserve(chat_id)
-    sent = 0
-    for card in cards:
-        try:
-            msg = await bot.send_message(chat_id=chat_id,
-                text=f'Quick review\n\nWhat does “{card["term"]}” mean?',
-                reply_markup=keyboard(card['token']))
-            store.delivered(card['token'], msg.message_id)
-            sent += 1
-        except Exception:
-            # Retry remaining cards on the next run. A network timeout can mean
-            # Telegram accepted a message: any orphaned buttons fail closed.
-            for remaining in cards[sent:]:
-                store.release(remaining['token'])
-            raise
-    return sent
-
-
 def wire(application, adapter):
     from telegram.ext import CallbackQueryHandler, CommandHandler
 
     async def welcome(update, context):
         if authorized(update):
-            await update.message.reply_text('Отправь английское слово или короткую фразу. Я объясню, переведу и сохраню.\n\nПовторения: ежедневно в 19:00 по Варшаве, до 5 карточек. /review — повторить сейчас.')
+            await update.message.reply_text('Отправь английское слово или короткую фразу. Я объясню, переведу и сохраню.\n\nПовторения: ежедневно в 19:00 по Варшаве, до 10 карточек в одном сообщении. Дальше — только по кнопке «Продолжить». /review — повторить сейчас.')
 
     async def review(update, context):
         if not authorized(update):
             return
         try:
             count = await send_reviews(context.bot, update.effective_chat.id)
-            if not count:
+            if count == 0:
                 await update.message.reply_text('На сегодня новых повторений нет. Отправь английское слово или фразу.')
         except Exception:
             log.exception('Review delivery failed')
             await update.message.reply_text('Не удалось отправить повторение. Попробуй /review позже.')
+
+    async def batch_button(update, context):
+        query = update.callback_query
+        if not authorized(update):
+            await query.answer('Нет доступа', show_alert=True)
+            return
+        acknowledged = False
+        try:
+            _, token, revision, action = query.data.split(':')
+            batch = Store().review_action(token, int(revision), update.effective_chat.id,
+                                         query.message.message_id, action)
+            if not batch:
+                await query.answer('Эта кнопка устарела. Продолжить повторение: /review.', show_alert=True)
+                return
+            await query.answer()
+            acknowledged = True
+            await edit_review(query.edit_message_text, batch)
+        except Exception:
+            log.exception('Review panel update failed; retrying the button restores stored progress')
+            if not acknowledged:
+                await query.answer('Не удалось обновить повторение. Нажми кнопку ещё раз.', show_alert=True)
 
     async def button(update, context):
         query = update.callback_query
@@ -113,6 +115,8 @@ def wire(application, adapter):
 
     application.add_handler(CommandHandler('start', welcome))
     application.add_handler(CommandHandler('review', review))
+    application.add_handler(CallbackQueryHandler(batch_button,
+        pattern=r'^tutorq:[0-9a-f]{16}:[0-9]+:(show|again|good|easy|more|stop)$'))
     application.add_handler(CallbackQueryHandler(button, pattern=r'^tutor:[0-9a-f]{16}:(show|again|good|easy)$'))
 
 

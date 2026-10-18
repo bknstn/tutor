@@ -11,8 +11,8 @@ async def main():
     if not owner.isdigit():
         raise ValueError('TUTOR_OWNER_ID must be a numeric private Telegram user ID')
     async with Bot(os.environ['TELEGRAM_BOT_TOKEN']) as bot:
-        count = await send_reviews(bot, owner)
-        print(f'Review cards sent: {count}')
+        count = await send_reviews(bot, owner, scheduled=True)
+        print(f'Review cards offered: {count or 0}')
 
 
 if __name__ == '__main__':

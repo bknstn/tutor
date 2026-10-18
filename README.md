@@ -22,9 +22,16 @@ granted`. Duplicate terms (case, whitespace and Unicode normalized) return
 the saved card and `Already saved.` New cards become due after 24 hours.
 Legacy cards can be enriched on resubmission without resetting review history.
 
-At 19:00 Europe/Warsaw, up to five due cards arrive. Recall the meaning, press
-**Показать ответ**, then **Again**, **Good**, or **Easy**. Python schedules the
-next review 1, 3, or 7 days later. `/review` requests a batch on demand.
+At 19:00 Europe/Warsaw, **one message** offers up to **10 due cards**, one at a
+time with a progress counter. Recall the meaning, press **Показать ответ**, then
+**Again**, **Good**, or **Easy**; the same message updates to the next card.
+Python schedules the next review 1, 3, or 7 days later. After the batch, remaining
+words require explicit consent via **Продолжить · до 10 карточек**; **На сегодня
+всё** stops. Continuations reuse the same message, and the scheduled job never
+automatically drains the backlog. Even 100 due words produce one scheduled
+message. Scheduled retries cannot start another batch on the same Warsaw day.
+`/review` starts a batch on demand or restores an active panel without sending
+another one. All progress and continuation decisions survive gateway restarts.
 Repeated clicks count only once; superseded buttons cannot update a newer
 review. Unanswered cards remain due and may be offered the next day.
 The daily job stays silent when nothing is due.
@@ -127,11 +134,14 @@ Run `python3 -m unittest discover -s tests -v`. The core uses only Python's
 standard library; Telegram and native session integration tests require the
 tutor Hermes venv and skip otherwise. Tests cover concurrent duplicates, due
 selection, intervals, persistence, unauthorized/replayed/stale buttons, delivery
-retries, Warsaw day boundaries and conversation-cache clearing.
+retries, bounded single-message batches with 100 due words, explicit continuation,
+Warsaw day boundaries and conversation-cache clearing.
 The plugin validator passes on Hermes v0.21.3, commit 345cd2b057.
 
 Delivery is not exactly-once: ambiguous network timeouts may leave an orphan
-message with inactive buttons before a retry sends a replacement. Reservations
-suppress repeated sends for 20 hours; a crash after reserving may defer a card
-until the next day. This is a single-owner MVP: no web UI, courses, accounts,
+message with inactive buttons before a retry sends a replacement. Undelivered
+failed batches release their reservations; a crash after reserving may defer a
+batch until the next day. Panels expire after 20 hours; unfinished cards remain
+due. Old individual-card buttons remain supported during the transition.
+This is a single-owner MVP: no web UI, courses, accounts,
 audio or analytics service.

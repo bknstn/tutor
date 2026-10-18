@@ -27,13 +27,15 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         self.store.save('rule out', 'phrasal_verb', '/ruːl aʊt/', self.meanings, now=0)
 
     async def test_delivery_failure_retries_and_success_is_not_resent(self):
-        bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError('network down')))
+        bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError('network down')),
+                              edit_message_text=AsyncMock())
         with self.assertRaises(RuntimeError):
             await send_reviews(bot, '42', self.store)
         bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=10))
         self.assertEqual(await send_reviews(bot, '42', self.store), 1)
-        self.assertEqual(await send_reviews(bot, '42', self.store), 0)
-        self.assertIn('tutor:', bot.send_message.call_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data)
+        self.assertIsNone(await send_reviews(bot, '42', self.store))
+        self.assertIn('tutorq:', bot.send_message.call_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data)
+        bot.send_message.assert_awaited_once()
 
     async def test_native_callback_updates_once(self):
         handlers = []
@@ -46,18 +48,18 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         update = SimpleNamespace(effective_user=SimpleNamespace(id=42),
                                  effective_chat=SimpleNamespace(id=42, type='private'), callback_query=query)
         with patch.dict(os.environ, TUTOR_OWNER_ID='42'), patch('hermes_tutor.Store', return_value=self.store):
-            await handlers[-1].callback(update, None)
-            revealed = query.edit_message_text.call_args.args[0]
+            await handlers[-2].callback(update, None)
+            revealed = query.edit_message_text.call_args.kwargs['text']
             self.assertIn('IPA: /ruːl aʊt/', revealed)
             for index, meaning in enumerate(self.meanings, 1):
                 self.assertIn(f'{index}. Meaning: {meaning["definition"]}', revealed)
                 self.assertIn(f'RU: {meaning["translation"]}', revealed)
                 self.assertIn(f'Example: {meaning["example"]}', revealed)
-            query.data = data.replace(':show', ':good')
-            await handlers[-1].callback(update, None)
-            await handlers[-1].callback(update, None)
+            query.data = query.edit_message_text.call_args.kwargs['reply_markup'].inline_keyboard[0][1].callback_data
+            await handlers[-2].callback(update, None)
+            await handlers[-2].callback(update, None)
         self.assertEqual(self.store.lookup('rule out')['review_count'], 1)
-        self.assertEqual(query.edit_message_text.await_count, 2)
+        self.assertIn('Готово!', query.edit_message_text.call_args.kwargs['text'])
 
 
 class AccessTests(unittest.TestCase):
