@@ -1,8 +1,39 @@
 __pycache__/
-*.pyc
-.env
-*.db*
+*.py[cod]
 .venv/
+venv/
+
+# Private configuration and authentication
+.env
+.env.*
+!.env.example
+/config.yaml
+.hermes/
+.hermes-*/
+auth.json
+auth-*.json
+credentials.json
+credentials-*.json
+token.json
+tokens.json
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Runtime data and backups
+*.db*
+*.sqlite*
+*.log
+logs/
+sessions/
+memories/
+plugin-data/
+backups/
+*.bak
+*.backup
 
 # macOS metadata
 .DS_Store

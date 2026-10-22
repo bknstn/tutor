@@ -51,7 +51,7 @@ def main():
             set_key(str(env), key, value, quote_mode='never')
     if 'TELEGRAM_BOT_TOKEN' not in existing:
         set_key(str(env), 'TELEGRAM_BOT_TOKEN', '', quote_mode='never')
-    # Each standalone home owns its credentials. Never import Buddy's OAuth.
+    # Each standalone home owns its credentials. Never import another instance's OAuth.
     plugin = HOME / 'plugins/hermes-tutor'
     if plugin.is_symlink() and plugin.resolve() != ROOT / 'hermes_tutor':
         plugin.unlink()
