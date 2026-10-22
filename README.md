@@ -128,3 +128,7 @@ Telegram delivery is not exactly once: an ambiguous network timeout can leave
 an extra message with inactive buttons. Review panels expire after 20 hours;
 unfinished cards remain due. See the [deployment guide](docs/deployment.md#delivery-and-recovery)
 for recovery details.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
